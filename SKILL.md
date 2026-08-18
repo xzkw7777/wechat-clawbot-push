@@ -55,9 +55,12 @@ with exit code 127 (command not found).
 ### 3. Notification behavior (configurable in the script)
 
 - `Stop` → sends bare `✅ 任务完成` (no reply content / dir / session id).
+  Throttled to at most one push per 5 minutes to protect the iLink quota
+  (the ~10-per-session / 7-per-5min limits are shared by all pushes).
 - `PermissionRequest` → only pushes for **high-risk** operations (delete /
   destructive commands, system-modification commands, writes to system
-  directories). Ordinary reads/writes are skipped silently. Adjust the filter
+  directories). Ordinary reads/writes are skipped silently, and high-risk
+  confirmations are **never throttled** (highest priority). Adjust the filter
   in `isHighRisk()` inside the script.
 
 ## Platform Limits (important)

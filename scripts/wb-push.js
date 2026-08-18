@@ -73,9 +73,23 @@ function randomWechatUin() {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
+// ---------- 节流状态（仅限 Stop 完成通知） ----------
+// iLink 平台限额：单会话下行配额约 10 条、账号约 7 条/5 分钟。
+// 完成通知每回合都推会快速打满配额、饿死「确认请求」推送（2026-08-18 实际发生）。
+// 因此 Stop 做 5 分钟节流；PermissionRequest 不节流（优先级最高）。
+const STATE_FILE = path.join(os.homedir(), '.workbuddy', 'wb-push.state.json');
+const STOP_THROTTLE_MS = 5 * 60 * 1000;
+
+function loadState() {
+  try { return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); } catch (e) { return {}; }
+}
+function saveState(st) {
+  try { fs.writeFileSync(STATE_FILE, JSON.stringify(st)); } catch (e) { /* 忽略 */ }
+}
+
 // ---------- 高风险过滤（确认通知专用） ----------
-// 确认通知只推「高风险操作」——删除/破坏类命令、系统修改类命令、对系统目录的写入；
-// 普通读写/查询不发。
+// 用户要求（2026-08-17）：确认通知只推「高风险操作」——删除/破坏类命令、
+// 系统修改类命令、对系统目录的写入；普通读写/查询不发。
 const SYSTEM_DIR_RE = /(^|[\\/'" ])(c:[\\/](windows|program files( \(x86\))?|system32)|[\\/](etc|usr|system|var|boot|bin|sbin|library)[\\/]|~?[\\/]\.ssh[\\/]|boot\.ini)/i;
 const DANGER_CMDS = [
   'rm ', 'rm -', 'rmdir', 'del ', 'del/', '/s /q', '/f /q', 'erase', 'format ',
@@ -159,7 +173,7 @@ async function sendWeixin(text) {
   throw lastErr || new Error('微信通道未知错误');
 }
 
-// ---------- 主推送 ----------
+// ---------- 主推送：仅微信 ClawBot（2026-08-17 用户要求关闭 Server酱） ----------
 async function push(title, desp) {
   const text = title + (desp ? '\n\n' + desp : '');
   const r = await sendWeixin(text);
@@ -180,6 +194,7 @@ async function main() {
     let title = 'WorkBuddy 通知';
     let desp = '';
     if (ev === 'PermissionRequest') {
+      // 用户要求（2026-08-17）：只推高风险操作，普通读写/查询跳过。
       if (!isHighRisk(p.tool_name, p.tool_input)) {
         console.error('[wb-push] 普通操作跳过确认通知: ' + (p.tool_name || '未知'));
         return;
@@ -189,9 +204,23 @@ async function main() {
       try { detail = truncate(JSON.stringify(p.tool_input || {}), 400); } catch (e) { /* 忽略 */ }
       desp = '操作: ' + (p.tool_name || '未知') + '\n' + detail;
     } else if (ev === 'Stop') {
+      // 每次对话回合结束自动推送（settings.json hooks.Stop）。
+      // 用户要求（2026-08-17）：只显示「✅ 任务完成」，不带回复内容/目录/会话。
+      // 2026-08-18 起恢复 5 分钟节流：否则完成通知会打满 iLink 配额，
+      // 把「确认请求」推送饿死（用户实测反馈）。
       const msg = String(p.last_assistant_message || '').trim();
       if (!msg) { console.error('[wb-push] Stop 事件无回复内容，跳过'); return; }
-      await push('✅ 任务完成', '');
+      const st = loadState();
+      const last = Number(st.lastStopPushAt) || 0;
+      if (Date.now() - last < STOP_THROTTLE_MS) {
+        console.error('[wb-push] Stop 节流跳过（距上次成功推送不足5分钟）');
+        return;
+      }
+      const r = await push('✅ 任务完成', '');
+      if (r && r.channel === 'weixin') {
+        st.lastStopPushAt = Date.now();
+        saveState(st);
+      }
       return;
     } else {
       title = 'WorkBuddy 事件: ' + ev;

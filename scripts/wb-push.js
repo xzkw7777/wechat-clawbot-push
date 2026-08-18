@@ -100,23 +100,33 @@ const DANGER_CMDS = [
 const WRITE_VERBS = ['cp ', 'copy', 'mv ', 'move', '>', 'tee', 'curl -o', 'wget -o',
   'out-file', 'set-content', 'add-content', 'new-item'];
 
+// 命令类工具：只有这类工具的输入才做「危险命令」全文匹配。
+// mcp__*（connector 工具）、Read/Write 等结构化工具的 tool_input 可能含
+// 文档全文，全文里的普通文本（如 "rm"、Markdown 引用 ">"）会被误判为危险命令
+// （2026-08-18 实际发生：mcp__github__push_files 的 content 是 README 全文）。
+const COMMAND_TOOLS = /^(bash|powershell|shell|cmd|execute|terminal)/i;
+
+// 敏感路径：SSH/AWS/凭据文件。SYSTEM_DIR_RE 的 .ssh 匹配因前缀约束漏掉
+// 绝对路径（如 C:/Users/x/.ssh/），故独立匹配。
+const SENSITIVE_PATH_RE = /(\.ssh[\\/]|\.aws[\\/]|\.gnupg[\\/]|\.kube[\\/]|id_rsa|id_ed25519|known_hosts)/i;
+
 function isHighRisk(toolName, toolInput) {
   const name = String(toolName || '');
   let inputStr = '';
   try { inputStr = JSON.stringify(toolInput || {}); } catch (e) { inputStr = String(toolInput || ''); }
   const lower = (name + ' ' + inputStr).toLowerCase();
 
-  // 1) 删除/破坏/系统修改类命令
-  if (DANGER_CMDS.some((c) => lower.includes(c))) return true;
-
-  // 2) 文件类工具直接写入系统目录
+  // 1) 文件类工具直接写入系统目录或敏感路径（如 SSH 密钥）
   if (/^(write|edit|notebookedit|create)/i.test(name)) {
     const fp = toolInput && (toolInput.file_path || toolInput.path || toolInput.filePath);
-    if (fp && SYSTEM_DIR_RE.test(String(fp))) return true;
+    if (fp && (SYSTEM_DIR_RE.test(String(fp)) || SENSITIVE_PATH_RE.test(String(fp)))) return true;
   }
 
-  // 3) 命令中「写动词 + 系统目录」组合（如 copy 到 C:/Windows）
-  if (WRITE_VERBS.some((v) => lower.includes(v)) && SYSTEM_DIR_RE.test(lower)) return true;
+  // 2) 命令类工具：删除/破坏类命令，或「写动词 + 系统目录」组合
+  if (COMMAND_TOOLS.test(name)) {
+    if (DANGER_CMDS.some((c) => lower.includes(c))) return true;
+    if (WRITE_VERBS.some((v) => lower.includes(v)) && SYSTEM_DIR_RE.test(lower)) return true;
+  }
 
   return false;
 }

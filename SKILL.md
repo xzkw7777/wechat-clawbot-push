@@ -100,5 +100,12 @@ The iLink bot can only push proactively when the user has an active session:
 - When exceeded, `sendmessage` returns `{"ret":-2,"errmsg":"prepare failed"}`.
 - Recovery: have the user send any message to the WeChat bot, which refreshes
   the quota/session. This limit cannot be bypassed from the script side.
+- **Silent non-delivery pitfall**: when the session is inactive (user hasn't
+  messaged the bot within ~24h), `sendmessage` may still return a `message_id`
+  (no error) but the message is **not delivered**. The script counts this as
+  success and records `lastStopPushAt`, so subsequent `Stop` pushes get
+  throttled for 5 min. Fix: have the user message the bot to activate the
+  session, then clear the throttle by writing `{}` to
+  `~/.workbuddy/wb-push.state.json`.
 
 See `references/ilink-protocol.md` for the full protocol and error handling.

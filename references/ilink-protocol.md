@@ -95,6 +95,24 @@ POST /ilink/bot/getupdates
 > 注：`ret=-2` 无法区分「限流」与「配额耗尽」，两者表现一致。
 > 这些限制是平台级规则，无法从客户端脚本侧绕过。
 
+### ⚠️ 会话不活跃时的「静默不投递」
+
+会话不活跃（用户近 24h 未给 bot 发消息）时，`sendmessage` **可能仍返回
+`message_id`（不报错）**，但消息不会真正投递到用户微信——这是最坑的一点：
+无法从返回值判断是否送达。
+
+对 `wb-push.js` 的影响：脚本会把这种「假成功」当作成功并写入
+`~/.workbuddy/wb-push.state.json` 的 `lastStopPushAt`，导致后续 `Stop` 推送被
+5 分钟节流跳过，表现为「手动 `--send` 能收到，但『任务完成』收不到」。
+
+处理步骤：
+
+1. 让用户给微信 clawbot 发任意消息，激活会话；
+2. 清空节流状态：把 `~/.workbuddy/wb-push.state.json` 内容写为 `{}`。
+
+> 提示：若 `getconfig` 返回 `{"ret":-4,"errmsg":"GetTypingTicket rpc failed"}`，
+> 通常也指向会话不活跃，而非登录态丢失（登录态丢失是 `ret=-14`）。
+
 ## 安全提示
 
 - 不要在仓库中提交 `botToken` / `userId`。本 skill 的脚本运行时从

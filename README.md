@@ -87,6 +87,7 @@ node scripts/wb-push.js --send "测试标题" "测试内容"
 | 完全收不到 | 检查 hook 路径是否用了正斜杠；确认 `settings.json` 里有 clawbot 凭据 |
 | `ret=-2 prepare failed` | 主动推送配额用尽或会话过期 → 让用户给微信 clawbot 发任意消息刷新 |
 | 发了几条后突然断 | 账号限速约 7 条/5 分钟，单会话配额约 10 条，稍等或刷新会话 |
+| 手动 `--send` 能收到，但「任务完成」收不到 | 会话不活跃时 `sendmessage` 仍返回 `message_id`（不报错）但消息**不投递**；脚本会误记 `lastStopPushAt`，导致后续 Stop 被 5 分钟节流跳过。处理：① 让用户给微信 clawbot 发任意消息激活会话；② 清空 `~/.workbuddy/wb-push.state.json`（内容写 `{}`）解除节流 |
 
 详见 `references/ilink-protocol.md`。
 

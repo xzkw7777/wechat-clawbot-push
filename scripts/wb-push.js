@@ -191,6 +191,18 @@ async function main() {
     let p = {};
     try { if (raw.trim()) p = JSON.parse(raw); } catch (e) { /* 忽略解析错误 */ }
     const ev = arg1 || 'Unknown';
+
+    // 调试捕获：记录 PermissionRequest / Notification 的原始 payload（排查过滤规则用，限 200KB）
+    if (ev === 'PermissionRequest' || ev === 'Notification') {
+      try {
+        const dbg = path.join(os.homedir(), '.workbuddy', 'wb-push.debug.log');
+        let old = '';
+        try { old = fs.readFileSync(dbg, 'utf8'); } catch (e) { /* 不存在 */ }
+        if (old.length > 200 * 1024) old = old.slice(-100 * 1024);
+        fs.writeFileSync(dbg, old + JSON.stringify({ at: new Date().toISOString(), ev, payload: p }) + '\n');
+      } catch (e) { /* 忽略 */ }
+    }
+
     let title = 'WorkBuddy 通知';
     let desp = '';
     if (ev === 'PermissionRequest') {
@@ -203,6 +215,23 @@ async function main() {
       let detail = '';
       try { detail = truncate(JSON.stringify(p.tool_input || {}), 400); } catch (e) { /* 忽略 */ }
       desp = '操作: ' + (p.tool_name || '未知') + '\n' + detail;
+    } else if (ev === 'Notification') {
+      // 权限提示类系统通知（Claude Code 风格 Notification hook）。
+      // 部分沙箱层弹窗（如批量删除防护）可能走这个事件——先用捕获日志确认。
+      const ntype = String(p.notification_type || '');
+      const msg = String(p.message || '');
+      if (!/permission|prompt|approval/i.test(ntype + ' ' + msg)) {
+        console.error('[wb-push] 非权限类通知，跳过: ' + ntype);
+        return;
+      }
+      const m = msg.match(/to\s+use\s+([A-Za-z_][\w.-]*)/i);
+      const toolName = m ? m[1] : '';
+      if (!isHighRisk(toolName, { message: msg })) {
+        console.error('[wb-push] 普通操作跳过通知: ' + (toolName || ntype || '未知'));
+        return;
+      }
+      title = '⚠️ WorkBuddy 需要你的确认';
+      desp = truncate(msg, 400);
     } else if (ev === 'Stop') {
       // 每次对话回合结束自动推送（settings.json hooks.Stop）。
       // 用户要求（2026-08-17）：只显示「✅ 任务完成」，不带回复内容/目录/会话。

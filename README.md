@@ -1,5 +1,35 @@
 # WeChat ClawBot Push (WorkBuddy Skill)
 
+> 让 WorkBuddy 的任务进展，直达你的微信 📱
+
+一个轻量级 WorkBuddy skill：当任务完成、或遇到需要你亲自确认的操作时，
+通过你微信里的 ClawBot 机器人实时推送**聊天式通知**——不用守在电脑前，
+打开手机微信就能掌握进度。
+
+**核心特性**
+
+- ✅ **任务完成提醒**：每次对话回合结束，自动推送「✅ 任务完成」
+- ⚠️ **确认请求提醒**：只对高风险操作推送（删除/危险命令/写入系统目录），
+  普通读写查询静默过滤，不刷屏
+- 🔒 **零密钥入仓**：脚本运行时自动读取本机 WorkBuddy 配置（或环境变量），
+  仓库内不含任何 token，可放心公开
+- 📚 **完整协议文档**：附 iLink 协议参考与排障手册（错误码、平台限额、常见坑）
+
+**工作原理**
+
+WorkBuddy 系统 hook（`Stop` / `PermissionRequest`）→ `wb-push.js` →
+iLink Bot API → 你的微信 ClawBot。
+
+```text
+任务结束 ──→ 系统 hook ──→ wb-push.js ──→ ilinkai.weixin.qq.com ──→ 微信 clawbot
+                              │                                        │
+                              └────────── 「✅ 任务完成」 ────────────────┘
+```
+
+---
+
+## 快速开始
+
 让 WorkBuddy 在「任务完成」或「需要你确认」时，通过微信里的 ClawBot 机器人
 给你发聊天式通知。
 
